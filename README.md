@@ -1,6 +1,6 @@
 # [claimid-dump](http://claimid-dump.joelpurra.com/)
 
-Dump data and links extracted from the shut down claimid.com service, using other sources.
+Dump data and links extracted from the [shut down claimid.com service](https://en.wikipedia.org/wiki/ClaimID), using other sources.
 
 Currently, [Google's Web Cache](https://support.google.com/webmasters/answer/1050724?hl=en#cached) is supported, see for example the username [joelpurra](http://webcache.googleusercontent.com/search?q=cache:http://claimid.com/joelpurra).
 
