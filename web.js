@@ -6,6 +6,7 @@
 var express = require('express'),
     requestHTTP = require("request"),
     cheerio = require("cheerio"),
+    extend = require("extend"),
     app = express(),
     JoelPurra = JoelPurra || {},
     port = process.env.PORT || 5000;
@@ -84,12 +85,12 @@ app.use(express.logger());
             },
 
             dump: function($context) {
-                var result = {
-                    generatedAt: new Date().valueOf(),
-                    cachedUrl: internal.getCachedUrl(),
-                    cachedAt: internal.getCachedDate(),
-                    groups: $(".display_group", $context).map(internal.extractGroup)
-                };
+                var groups = $(".display_group", $context),
+                    result = {
+                        cachedUrl: internal.getCachedUrl(),
+                        cachedAt: internal.getCachedDate(),
+                        groups: groups.length === 0 ? undefined : groups.map(internal.extractGroup)
+                    };
 
                 return result;
             }
@@ -153,9 +154,13 @@ app.get("/dump/", function(request, response, next) {
 
     requestHTTP(url, function(error, responseHTTP, bodyHtml) {
         var $ = cheerio.load(bodyHtml),
-            result = JoelPurra.claimIdDump.dump($);
-
-        result.cacheUrl = url;
+            dumped = JoelPurra.claimIdDump.dump($),
+            meta = {
+                username: username,
+                generatedAt: new Date().valueOf(),
+                cacheUrl: url
+            },
+            result = extend({}, meta, dumped);
 
         response.json(result);
     });
