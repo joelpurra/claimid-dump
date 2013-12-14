@@ -5,9 +5,25 @@
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>ClaimID.com dump data extraction: Intro</title>
     <link rel="stylesheet" type="text/css" href="http://fonts.googleapis.com/css?family=Quando" />
-    <style type="text/css" scoped="scoped">
+    <style type="text/css">
     h1, h2, h3, h4, h5, h6 {
         font-family: Quando, Helvetica, Verdana, sans-serif;
+    }
+    #hero {
+        background-color: lightgray;
+        border-radius: 5px;
+        padding: 1em;
+    }
+    fieldset {
+        border: 3px solid grey;
+        border-radius: 5px;
+        font-size: 1.5em;
+    }
+    fieldset p:first-of-type {
+        margin-top: 0;
+    }
+    fieldset input, fieldset button {
+        font-size: 1em;
     }
     </style>
 
@@ -17,6 +33,26 @@
     <h1>
         <a href="http://claimid-dump.joelpurra.com/">ClaimID.com dump data and link extraction</a>: Intro
     </h1>
+    <p>
+        Did you get dumped by ClaimID, leaving you hanging high and dry? Well, now you can dump them too! Use this tool to download and reclaim your links, in a simple <a href="https://en.wikipedia.org/wiki/JSON">json</a> format.
+    </p>
+    <section id="hero">
+        <form id="dump-form" action="/dump/" method="GET">
+            <fieldset>
+                <legend>Download data and links from your ClaimID user page</legend>
+                <p>
+                    <em>Success not guaranteed!</em>
+                </p>
+                <label>ClaimID username
+                    <input id="dump-username" name="username" type="text" required="required" pattern="^[a-z0-9\-]{1,64}$" autofocus="autofocus" title="Please fill out your username (letters, numbers and dashes)" />
+                </label>
+                <button type="submit">
+                    Extract groups, links and related data
+                </button>
+            </fieldset>
+        </form>
+    </section>
+
     <section>
         <h2>
             Resources
@@ -24,26 +60,19 @@
         <ul>
             <li><a href="http://claimid-dump.joelpurra.com/">This page</a>
             </li>
+            <li><a href="https://github.com/joelpurra/claimid-dump">Source code for claimid-dump on github</a>
+            </li>
             <li><a href="http://claimid.com/">ClaimID.com as it looks today</a>
             </li>
-            <li><a href="http://webcache.googleusercontent.com/search?q=cache:http://claimid.com/joelpurra">claimid.com/joelpurra as it looks in Google's website cache</a>
+            <li>Example, username "joelpurra":
+                <ul>
+                    <li><a href="http://webcache.googleusercontent.com/search?q=cache:http://claimid.com/joelpurra">claimid.com/joelpurra as it looks in Google's website cache</a>
+                    </li>
+                    <li><a href="dump/?username=joelpurra">data from claimid.com/joelpurra extracted to json</a>
+                    </li>
+                </ul>
             </li>
         </ul>
-    </section>
-
-    <section>
-        <h2>
-            Download data and links
-        </h2>
-        <form id="dump-form" action="/dump/" method="GET">
-            <label>ClaimID username
-                <input id="dump-username" name="username" type="text" required="required" pattern="^[a-z0-9\-]{1,64}$" autofocus="autofocus" title="Please fill out your username (letters, numbers and dashes)" />
-            </label>
-            <button type="submit">
-                Extract groups, links and related data
-            </button>
-        </form>
-        <output id="dump-output" />
     </section>
 
     <section>
