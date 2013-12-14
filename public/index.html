@@ -37,7 +37,7 @@
         </h2>
         <form id="dump-form" action="/dump/" method="GET">
             <label>ClaimID username
-                <input id="dump-username" name="username" type="text" required="required" autofocus="autofocus" title="Please fill out your username" />
+                <input id="dump-username" name="username" type="text" required="required" pattern="^[a-z0-9\-]{1,64}$" autofocus="autofocus" title="Please fill out your username (letters, numbers and dashes)" />
             </label>
             <button type="submit">
                 Extract groups, links and related data
