@@ -31,7 +31,7 @@ app.use(express.logger());
                         tags: $this.find("[rel~=tag]").map(function() {
                             return $(this).text();
                         }),
-                        description: $this.find(".public_description").eq(0).text(),
+                        description: $this.find(".public_description").first().text(),
                         added: $this.find(".date_added").text().match(dateFormatRx)[0],
                         date: $this.find(".date").text(),
                         about: who[0],
@@ -43,7 +43,7 @@ app.use(express.logger());
 
             extractGroup: function() {
                 var $this = $(this),
-                    titleHtml = $this.find(".group_header").eq(0).html(),
+                    titleHtml = $this.find(".group_header").first().html(),
                     result = {
                         title: titleHtml.substring(0, titleHtml.indexOf("<")).trim(),
                         description: $this.find(".group_description .text").text(),
@@ -53,9 +53,40 @@ app.use(express.logger());
                 return result;
             },
 
+            getCachedDate: function() {
+                try {
+                    var div = $("div div").first();
+                    var text = div.text();
+                    var gmtSplit = text.split("GMT");
+                    console.log("gmtSplit", gmtSplit)
+                    var appearSplit = gmtSplit[0].trim().split("appeared on");
+                    var dateTimeUtcValue = new Date(appearSplit[1].trim() + " GMT").valueOf();
+
+                    return dateTimeUtcValue;
+                } catch (e) {
+                    console.error("Could not parse the cache date.")
+                }
+
+                return undefined;
+            },
+
+            getCachedUrl: function() {
+                try {
+                    var url = $("div div").first().find("a").first().attr("href");
+
+                    return url;
+                } catch (e) {
+                    console.error("Could not parse the cache date.")
+                }
+
+                return undefined;
+            },
+
             dump: function($context) {
                 var result = {
-                    datetime: new Date().valueOf(),
+                    generatedAt: new Date().valueOf(),
+                    cachedUrl: internal.getCachedUrl(),
+                    cachedAt: internal.getCachedDate(),
                     groups: $(".display_group", $context).map(internal.extractGroup)
                 };
 
@@ -122,6 +153,8 @@ app.get("/dump/", function(request, response, next) {
     requestHTTP(url, function(error, responseHTTP, bodyHtml) {
         var $ = cheerio.load(bodyHtml),
             result = JoelPurra.claimIdDump.dump($);
+
+        result.cacheUrl = url;
 
         response.json(result);
     });
