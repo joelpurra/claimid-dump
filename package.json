@@ -1,7 +1,7 @@
 {
     "name": "claimid-dump",
     "version": "0.0.0",
-    "description": "Dump data extracted from the shut down claimid.com service, using other sources.",
+    "description": "Dump data and links extracted from the shut down claimid.com service, using other sources.",
     "main": "web.js",
     "dependencies": {
         "express": "^3.3.4",
