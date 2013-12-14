@@ -100,15 +100,23 @@ var getClaimIdCacheUrl = function(username) {
 };
 
 app.get("/dump/", function(request, response, next) {
-    function checkAndClean(str, disallowedRx) {
-        if (disallowedRx.test(str)) {
+    function checkAndClean(str, disallowedRx, allowedRx) {
+        if (disallowedRx.test(str) || !allowedRx.test(str)) {
             response.send(422);
         }
 
         return str;
     }
 
-    var username = checkAndClean(request.query.username, /[^\w]/),
+    function checkAndCleanUsername(username) {
+        var clean = checkAndClean(username, /[^a-z0-9\-]/i, /^[a-z0-9\-]{1,64}$/i);
+
+        clean = clean.toLowerCase();
+
+        return clean;
+    }
+
+    var username = checkAndCleanUsername(request.query.username),
         url = getClaimIdCacheUrl(username);
 
     requestHTTP(url, function(error, responseHTTP, bodyHtml) {
