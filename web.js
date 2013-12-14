@@ -35,7 +35,8 @@ app.use(express.logger());
                         added: $this.find(".date_added").text().match(dateFormatRx)[0],
                         date: $this.find(".date").text(),
                         about: who[0],
-                        by: who[1]
+                        by: who[1],
+                        color: $this.find("a").first().find("img").attr("alt").replace("Star_", "")
                     };
 
                 return result;
