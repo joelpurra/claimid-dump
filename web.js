@@ -4,19 +4,16 @@
 /*global require: true, process: true, __dirname: true, console: true, JoelPurra: true */
 
 var express = require('express'),
-    requestHTTP = require("request"),
     cheerio = require("cheerio"),
     extend = require("extend"),
-    mongo = require('mongodb'),
     Deferred = require('Deferred'),
     app = express(),
     JoelPurra = JoelPurra || {},
     port = process.env.PORT || 5000,
     mongoUri = process.env.MONGOLAB_URI || 'mongodb://localhost/',
     mongoDbName = "claimdid-dump",
-    MongoDBManagment = (function() {
-        function Server(mongo, uri) {
-            this.mongo = mongo;
+    MongoDBManagment = (function(mongo) {
+        function Server(uri) {
             this.uri = uri;
 
             return this;
@@ -36,25 +33,36 @@ var express = require('express'),
             return this;
         }
 
-        Server.prototype.getDatabase = function(name) {
-            return new Database(this, name);
+        Server.prototype.with = function() {
+            var deferred = new Deferred(),
+                mongoClient = new mongo.MongoClient(new mongo.Server("localhost", 27017));
+
+            mongoClient.open(function(error, mongoClient) {
+                if (error) {
+                    deferred.reject(error);
+                }
+
+                // TODO: mongoClient.close();
+                deferred.resolve(mongoClient);
+            });
+
+            return deferred.promise();
         };
 
-        Database.prototype.getDatabaseUri = function() {
-            return this.server.uri + this.name;
+        Server.prototype.getDatabase = function(name) {
+            return new Database(this, name);
         };
 
         Database.prototype.with = function() {
             var deferred = new Deferred();
 
-            this.server.mongo.connect(this.getDatabaseUri(), function(error, database) {
-                if (error) {
-                    deferred.reject(error);
-                }
+            this.server.with()
+                .fail(deferred.reject)
+                .done(function(mongoClient) {
+                    var database = mongoClient.db(this.name);
 
-                // TODO: close database, database.close()
-                deferred.resolve(database);
-            });
+                    deferred.resolve(database);
+                }.bind(this));
 
             return deferred.promise();
         };
@@ -76,25 +84,43 @@ var express = require('express'),
 
                         deferred.resolve(collection);
                     });
-                });
+                }.bind(this));
 
             return deferred.promise();
         };
 
-        Collection.prototype.findOne = function(criteria) {
+        Collection.prototype.find = function(query, fields, options) {
             var deferred = new Deferred();
 
             this.with()
                 .fail(deferred.reject)
                 .done(function(collection) {
-                    collection.findOne(criteria, function(error, result) {
+                    collection.findOne(query, fields, options, function(error, result) {
                         if (error) {
                             deferred.reject(error);
                         }
 
                         deferred.resolve(result);
                     });
-                });
+                }.bind(this));
+
+            return deferred.promise();
+        };
+
+        Collection.prototype.findOne = function(query, fields, options) {
+            var deferred = new Deferred();
+
+            this.with()
+                .fail(deferred.reject)
+                .done(function(collection) {
+                    collection.findOne(query, fields, options, function(error, result) {
+                        if (error) {
+                            deferred.reject(error);
+                        }
+
+                        deferred.resolve(result);
+                    });
+                }.bind(this));
 
             return deferred.promise();
         };
@@ -126,7 +152,49 @@ var express = require('express'),
 
                         deferred.resolve(result);
                     });
-                });
+                }.bind(this));
+
+            return deferred.promise();
+        };
+
+        Collection.prototype.remove = function(_id) {
+            var deferred = new Deferred();
+
+            this.with()
+                .fail(deferred.reject)
+                .done(function(collection) {
+                    collection.remove({
+                        _id: _id
+                    }, {
+                        safe: true
+                    }, function(error, result) {
+                        if (error) {
+                            deferred.reject(error);
+                        }
+
+                        deferred.resolve(result);
+                    });
+                }.bind(this));
+
+            return deferred.promise();
+        };
+
+        Collection.prototype.save = function(object) {
+            var deferred = new Deferred();
+
+            this.with()
+                .fail(deferred.reject)
+                .done(function(collection) {
+                    collection.save(object, {
+                        safe: true
+                    }, function(error, result) {
+                        if (error) {
+                            deferred.reject(error);
+                        }
+
+                        deferred.resolve(result);
+                    });
+                }.bind(this));
 
             return deferred.promise();
         };
@@ -152,7 +220,7 @@ var express = require('express'),
                             deferred.resolve(result);
                         }
                     });
-                });
+                }.bind(this));
 
             return deferred.promise();
         };
@@ -162,7 +230,65 @@ var express = require('express'),
         };
 
         return api;
-    }());
+    }(require('mongodb'))),
+    DB = {
+        Users: (function() {
+            // TODO: class inheritance/aliasing
+            var Users = new MongoDBManagment.Server(mongoUri).getDatabase(mongoDbName).getCollection("users");
+            Users.getOrCreate = function(username) {
+                var deferred = new Deferred(),
+                    userToFind = {
+                        username: username
+                    };
+
+                this.findOne(userToFind)
+                    .fail(deferred.reject)
+                    .done(function(user) {
+                        if (user) {
+                            deferred.resolve(user);
+                        } else {
+                            this.insert(userToFind)
+                                .fail(deferred.reject)
+                                .done(function(user) {
+                                    deferred.resolve(user);
+                                });
+                        }
+                    });
+
+                return deferred;
+            }
+
+            return Users;
+        }()),
+        HttpCache: (function() {
+            // TODO: class inheritance/aliasing
+            var HttpCache = new MongoDBManagment.Server(mongoUri).getDatabase(mongoDbName).getCollection("http-cache");
+
+            return HttpCache;
+        }()),
+        Dumped: (function() {
+            // TODO: class inheritance/aliasing
+            var Dumped = new MongoDBManagment.Server(mongoUri).getDatabase(mongoDbName).getCollection("dumped");
+
+            return Dumped;
+        }())
+    },
+    requestHTTPDeferred = (function(requestHTTP) {
+        var request = function(url) {
+            var deferred = new Deferred();
+            requestHTTP(url, function(error, responseHTTP, bodyHtml) {
+                if (error) {
+                    deferred.reject(error);
+                } else {
+                    deferred.resolve(responseHTTP, bodyHtml);
+                }
+            });
+
+            return deferred;
+        };
+
+        return request;
+    }(require("request")));
 
 app.use(express.logger());
 
@@ -264,25 +390,27 @@ app.use(express.logger());
 
 }(JoelPurra, "claimIdDump"));
 
-var getClaimIdCacheUrl = function(username) {
+var getClaimIdUrl = function(username) {
     // This function is modified client side code, and should be rewritten to more of a server side format.
     var claimIdBaseUrl = "http://claimid.com/",
+        claimIdUrl = claimIdBaseUrl + username,
 
-        googleCacheBaseUrl = "http://webcache.googleusercontent.com/search?q=cache:",
+    return claimIdUrl;
+};
+
+var getClaimIdCacheUrl = function(username) {
+    // This function is modified client side code, and should be rewritten to more of a server side format.
+    var googleCacheBaseUrl = "http://webcache.googleusercontent.com/search?q=cache:",
 
         encodeUrl = function(url) {
             return encodeURI(url);
         },
 
-        dump = function(username) {
-            var claimIdUrl = claimIdBaseUrl + username,
+        claimIdUrl = getClaimIdUrl(username),
 
-                url = googleCacheBaseUrl + encodeUrl(claimIdUrl);
+        url = googleCacheBaseUrl + encodeUrl(claimIdUrl);
 
-            return url;
-        };
-
-    return dump(username);
+    return url;
 };
 
 app.get("/dump/", function(request, response, next) {
@@ -302,32 +430,41 @@ app.get("/dump/", function(request, response, next) {
         return clean;
     }
 
+    function handleError(error) {
+        throw error;
+    }
+
     var username = checkAndCleanUsername(request.query.username),
         url = getClaimIdCacheUrl(username);
 
-    var users = new MongoDBManagment.Server(mongo, mongoUri).getDatabase(mongoDbName).getCollection("users");
+    DB.Users.getOrCreate(username)
+        .fail(handleError)
+        .done(function(user) {
+            DB.HttpCache.findOne({
+                cachedUrl: getClaimIdUrl(username)
+            }, {
+                sort: [
+                    ["cachedAt", "desc"]
+                ]
+            })
+                .fail(handleError)
+                .done(function() {
+                    requestHTTPDeferred(url)
+                        .fail(handleError)
+                        .done(function() {
+                            var $ = cheerio.load(bodyHtml),
+                                dumped = JoelPurra.claimIdDump.dump($),
+                                meta = {
+                                    username: username,
+                                    generatedAt: new Date().valueOf(),
+                                    cacheUrl: url
+                                },
+                                result = extend({}, meta, dumped);
 
-    var fromDb = users.findOne({
-        username: username
-    });
-
-    response.json({
-        test: true,
-        fromDb: fromDb
-    });
-
-    // requestHTTP(url, function(error, responseHTTP, bodyHtml) {
-    //     var $ = cheerio.load(bodyHtml),
-    //         dumped = JoelPurra.claimIdDump.dump($),
-    //         meta = {
-    //             username: username,
-    //             generatedAt: new Date().valueOf(),
-    //             cacheUrl: url
-    //         },
-    //         result = extend({}, meta, dumped);
-
-    //     response.json(result);
-    // });
+                            response.json(result);
+                        });
+                });
+        });
 });
 
 app.use(express.static(__dirname + '/public'));
