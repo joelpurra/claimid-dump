@@ -7,9 +7,162 @@ var express = require('express'),
     requestHTTP = require("request"),
     cheerio = require("cheerio"),
     extend = require("extend"),
+    mongo = require('mongodb'),
+    Deferred = require('Deferred'),
     app = express(),
     JoelPurra = JoelPurra || {},
-    port = process.env.PORT || 5000;
+    port = process.env.PORT || 5000,
+    mongoUri = process.env.MONGOLAB_URI || 'mongodb://localhost/',
+    mongoDbName = "claimdid-dump",
+    MongoDBManagment = (function() {
+        function Server(mongo, uri) {
+            this.mongo = mongo;
+            this.uri = uri;
+
+            return this;
+        }
+
+        function Database(server, name) {
+            this.server = server;
+            this.name = name;
+
+            return this;
+        }
+
+        function Collection(database, name) {
+            this.database = database;
+            this.name = name;
+
+            return this;
+        }
+
+        Server.prototype.getDatabase = function(name) {
+            return new Database(this, name);
+        };
+
+        Database.prototype.getDatabaseUri = function() {
+            return this.server.uri + this.name;
+        };
+
+        Database.prototype.with = function() {
+            var deferred = new Deferred();
+
+            this.server.mongo.connect(this.getDatabaseUri(), function(error, database) {
+                if (error) {
+                    deferred.reject(error);
+                }
+
+                // TODO: close database, database.close()
+                deferred.resolve(database);
+            });
+
+            return deferred.promise();
+        };
+
+        Database.prototype.getCollection = function(name) {
+            return new Collection(this, name);
+        };
+
+        Collection.prototype.with = function() {
+            var deferred = new Deferred();
+
+            this.database.with()
+                .fail(deferred.reject)
+                .done(function(database) {
+                    database.collection(this.name, function(error, collection) {
+                        if (error) {
+                            deferred.reject(error);
+                        }
+
+                        deferred.resolve(collection);
+                    });
+                });
+
+            return deferred.promise();
+        };
+
+        Collection.prototype.findOne = function(criteria) {
+            var deferred = new Deferred();
+
+            this.with()
+                .fail(deferred.reject)
+                .done(function(collection) {
+                    collection.findOne(criteria, function(error, result) {
+                        if (error) {
+                            deferred.reject(error);
+                        }
+
+                        deferred.resolve(result);
+                    });
+                });
+
+            return deferred.promise();
+        };
+
+        Collection.prototype.get = function(_id) {
+            var deferred = new Deferred();
+
+            this.findOne({
+                _id: _id
+            })
+                .fail(deferred.reject)
+                .done(deferred.resolve);
+
+            return deferred.promise();
+        };
+
+        Collection.prototype.insert = function(object) {
+            var deferred = new Deferred();
+
+            this.with()
+                .fail(deferred.reject)
+                .done(function(collection) {
+                    collection.insert(object, {
+                        safe: true
+                    }, function(error, result) {
+                        if (error) {
+                            deferred.reject(error);
+                        }
+
+                        deferred.resolve(result);
+                    });
+                });
+
+            return deferred.promise();
+        };
+
+        Collection.prototype.getOrInsert = function(object) {
+            var deferred = new Deferred();
+
+            this.with()
+                .fail(deferred.reject)
+                .done(function(collection) {
+                    collection.findOne({
+                        _id: object._id
+                    }, function(error, result) {
+                        if (error) {
+                            deferred.reject(error);
+                        }
+
+                        if (!result) {
+                            this.insert(object)
+                                .fail(deferred.reject)
+                                .done(deferred.resolve);
+                        } else {
+                            deferred.resolve(result);
+                        }
+                    });
+                });
+
+            return deferred.promise();
+        };
+
+        var api = {
+            Server: Server
+        };
+
+        return api;
+    }());
 
 app.use(express.logger());
 
@@ -152,18 +305,29 @@ app.get("/dump/", function(request, response, next) {
     var username = checkAndCleanUsername(request.query.username),
         url = getClaimIdCacheUrl(username);
 
-    requestHTTP(url, function(error, responseHTTP, bodyHtml) {
-        var $ = cheerio.load(bodyHtml),
-            dumped = JoelPurra.claimIdDump.dump($),
-            meta = {
-                username: username,
-                generatedAt: new Date().valueOf(),
-                cacheUrl: url
-            },
-            result = extend({}, meta, dumped);
+    var users = new MongoDBManagment.Server(mongo, mongoUri).getDatabase(mongoDbName).getCollection("users");
 
-        response.json(result);
+    var fromDb = users.findOne({
+        username: username
     });
+
+    response.json({
+        test: true,
+        fromDb: fromDb
+    });
+
+    // requestHTTP(url, function(error, responseHTTP, bodyHtml) {
+    //     var $ = cheerio.load(bodyHtml),
+    //         dumped = JoelPurra.claimIdDump.dump($),
+    //         meta = {
+    //             username: username,
+    //             generatedAt: new Date().valueOf(),
+    //             cacheUrl: url
+    //         },
+    //         result = extend({}, meta, dumped);
+
+    //     response.json(result);
+    // });
 });
 
 app.use(express.static(__dirname + '/public'));
