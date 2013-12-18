@@ -562,7 +562,7 @@ app.use(express.logger());
 app.get("/dump/", function(request, response, next) {
     function checkAndClean(str, disallowedRx, allowedRx) {
         if (disallowedRx.test(str) || !allowedRx.test(str)) {
-            response.send(422);
+            return null;
         }
 
         return str;
@@ -582,6 +582,12 @@ app.get("/dump/", function(request, response, next) {
 
     var username = checkAndCleanUsername(request.query.username),
         url = getClaimIdCacheUrl(username);
+
+    if (!username) {
+        response.send(422);
+        response.end();
+        return;
+    }
 
     DB.Users.getOrCreate(username)
         .fail(handleError)
