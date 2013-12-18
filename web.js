@@ -33,11 +33,13 @@ var express = require('express'),
 
         if (isObject(obj)) {
             Object.keys(obj).forEach(function(key) {
-                var clean = key.replace(".", "___dot___");
+                var clean = key.replace(/\./g, "___dot___");
 
                 obj[clean] = deepCleanKeysFromDots(obj[key]);
 
-                delete obj[key];
+                if (clean !== key) {
+                    delete obj[key];
+                }
             });
         }
 
