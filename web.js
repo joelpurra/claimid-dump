@@ -168,7 +168,9 @@ var express = require('express'),
             this.server.with()
                 .fail(deferred.reject)
                 .done(function(mongoClient) {
-                    var database = mongoClient.db(this.name);
+                    var database = mongoClient.db(this.name, null, {
+                        native_parser: true
+                    });
 
                     deferred.resolve(database);
                 }.bind(this));
