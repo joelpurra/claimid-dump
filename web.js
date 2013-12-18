@@ -571,7 +571,9 @@ app.get("/dump/", function(request, response, next) {
     function checkAndCleanUsername(username) {
         var clean = checkAndClean(username, /[^a-z0-9\-]/i, /^[a-z0-9\-]{1,64}$/i);
 
-        clean = clean.toLowerCase();
+        if (clean) {
+            clean = clean.toLowerCase();
+        }
 
         return clean;
     }
