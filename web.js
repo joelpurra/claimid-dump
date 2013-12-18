@@ -601,9 +601,7 @@ app.get("/dump/", function(request, response, next) {
     DB.Users.getOrCreate(username)
         .fail(handleError)
         .done(function(user) {
-            // TODO DEBUG: currently forcing requests
             DB.HttpCache.getLatestOneOrRequestAndCache(url, true)
-            //DB.HttpCache.requestAndCache(url, true)
             .fail(sendForwardedHttpStatusCode)
                 .fail(handleError)
                 .done(function(cachedRequest) {
