@@ -415,14 +415,14 @@ var express = require('express'),
                 return deferred;
             }.bind(HttpCache);
 
-            HttpCache.getLatestOneOrRequestAndCache = function(url) {
+            HttpCache.getLatestOneOrRequestAndCache = function(url, acceptNotOnlyHttpStatus200) {
                 var deferred = new Deferred();
 
                 this.getLatestOne(url)
                     .fail(deferred.reject)
                     .done(function(cached) {
                         if (!cached) {
-                            this.requestAndCache(url)
+                            this.requestAndCache(url, acceptNotOnlyHttpStatus200)
                                 .fail(deferred.reject)
                                 .done(deferred.resolve);
                         } else {
@@ -580,6 +580,13 @@ app.get("/dump/", function(request, response, next) {
         throw error;
     }
 
+    function sendForwardedHttpStatusCode(error, responseHttp) {
+        if (typeof error === "number" && error >= 100 && error <= 999) {
+            response.send(error);
+            response.end();
+        }
+    }
+
     var username = checkAndCleanUsername(request.query.username),
         url = getClaimIdCacheUrl(username);
 
@@ -593,15 +600,10 @@ app.get("/dump/", function(request, response, next) {
         .fail(handleError)
         .done(function(user) {
             // TODO DEBUG: currently forcing requests
-            DB.HttpCache.getLatestOneOrRequestAndCache(url)
-            //DB.HttpCache.requestAndCache(url)
-            .fail(function(error, responseHttp) {
-                if (typeof error === "number" && error >= 100 && error <= 999) {
-                    response.send(error);
-                } else {
-                    handleError(error);
-                }
-            })
+            DB.HttpCache.getLatestOneOrRequestAndCache(url, true)
+            //DB.HttpCache.requestAndCache(url, true)
+            .fail(sendForwardedHttpStatusCode)
+                .fail(handleError)
                 .done(function(cachedRequest) {
                     DB.Dumped.getLatestOne(user._id)
                         .fail(handleError)
@@ -619,6 +621,7 @@ app.get("/dump/", function(request, response, next) {
 
                             function send(result) {
                                 response.json(result);
+                                response.end();
                             }
 
                             function handleCachedDump(fromCache) {
@@ -628,6 +631,11 @@ app.get("/dump/", function(request, response, next) {
                             }
 
                             if (!cachedDump) {
+                                if (!cachedRequest || !cachedRequest.response || !cachedRequest.response.statusCode || typeof cachedRequest.response.statusCode !== "number" || cachedRequest.response.statusCode !== 200) {
+                                    sendForwardedHttpStatusCode(cachedRequest.response.statusCode, cachedRequest.response);
+                                    return;
+                                }
+
                                 var $ = cheerio.load(cachedRequest.body),
                                     dumped = JoelPurra.claimIdDump.dump($),
                                     generatedAt = new Date().valueOf(),
