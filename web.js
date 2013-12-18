@@ -375,7 +375,7 @@ var express = require('express'),
 
                 this.findOne({
                     url: url
-                }, undefined, {
+                }, null, {
                     sort: [
                         ["retrievedAt", "desc"]
                     ]
@@ -444,7 +444,7 @@ var express = require('express'),
 
                 this.findOne({
                     user_id: toObjectID(user_id)
-                }, undefined, {
+                }, null, {
                     sort: [
                         ["generatedAt", "desc"]
                     ]
