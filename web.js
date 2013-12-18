@@ -112,19 +112,48 @@ var express = require('express'),
             return this;
         }
 
+        Server.ConnectionPools = [];
+
+        Server.DEFAULTPORT = 27017;
+
+        Server.parseMongoUri = function(uri) {
+            // HACK: I don't expect this to work well in the future
+            var parts = uri.replace("mongodb://", "").split("/")[0].split(":"),
+
+                result = {
+                    host: parts[0],
+                    port: parts[1] || Server.DEFAULTPORT
+                };
+
+            return result;
+        };
+
         Server.prototype.with = function() {
             var deferred = new Deferred(),
-                // TODO: Use configurabe mongodb:// uri
-                mongoClient = new mongo.MongoClient(new mongo.Server("localhost", 27017));
+                cachedMongoClient = Server.ConnectionPools[this.uri],
+                uriParts,
+                mongoClient;
 
-            mongoClient.open(function(error, mongoClient) {
-                if (error) {
-                    deferred.reject(error);
-                }
+            if (cachedMongoClient) {
+                deferred.resolve(cachedMongoClient);
+            } else {
+                // TODO: Use configurabe mongodb:// uri straight using mongo.MongoClient.Connect(uri)?
+                uriParts = Server.parseMongoUri(this.uri);
+                mongoClient = new mongo.MongoClient(new mongo.Server(uriParts.host, uriParts.port, {
+                    auto_reconnect: true
+                }));
 
-                // TODO: mongoClient.close();
-                deferred.resolve(mongoClient);
-            });
+                mongoClient.open(function(error, mongoClient) {
+                    if (error) {
+                        deferred.reject(error);
+                    }
+
+                    Server.ConnectionPools[this.uri] = mongoClient;
+
+                    // TODO: mongoClient.close(); ever?
+                    deferred.resolve(mongoClient);
+                }.bind(this));
+            }
 
             return deferred.promise();
         };
