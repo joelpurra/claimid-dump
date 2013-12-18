@@ -11,7 +11,84 @@ var express = require('express'),
     JoelPurra = JoelPurra || {},
     port = process.env.PORT || 5000,
     mongoUri = process.env.MONGOLAB_URI || 'mongodb://localhost/',
-    mongoDbName = "claimdid-dump",
+    mongoDbName = "claimid-dump",
+    dumpedDataVersion = 0,
+    toObjectID = (function(ObjectID) {
+        function toObjectID(id) {
+            if (!(id instanceof ObjectID)) {
+                return new ObjectID(id);
+            }
+
+            return id;
+        }
+
+        return toObjectID;
+    }(require('mongodb').ObjectID)),
+    deepCleanKeysFromDots = function(obj) {
+        function isObject(obj) {
+            var result = (typeof obj === 'object' || typeof obj === 'function') && (obj !== null);
+
+            return result;
+        }
+
+        if (isObject(obj)) {
+            Object.keys(obj).forEach(function(key) {
+                var clean = key.replace(".", "___dot___");
+
+                obj[clean] = deepCleanKeysFromDots(obj[key]);
+
+                delete obj[key];
+            });
+        }
+
+        return obj;
+    },
+    callWithFirstInArray = function(fn, context) {
+        context = context || null;
+        var wrapped = function(array) {
+            return fn.call(context, array[0]);
+        }
+
+        return wrapped;
+    },
+    getClaimIdUrl = function(username) {
+        // This function is modified client side code, and should be rewritten to more of a server side format.
+        var claimIdBaseUrl = "http://claimid.com/",
+            claimIdUrl = claimIdBaseUrl + username;
+
+        return claimIdUrl;
+    },
+    getClaimIdCacheUrl = function(username) {
+        // This function is modified client side code, and should be rewritten to more of a server side format.
+        var googleCacheBaseUrl = "http://webcache.googleusercontent.com/search?q=cache:",
+
+            encodeUrl = function(url) {
+                return encodeURI(url);
+            },
+
+            claimIdUrl = getClaimIdUrl(username),
+
+            url = googleCacheBaseUrl + encodeUrl(claimIdUrl);
+
+        return url;
+    },
+    requestHTTPDeferred = (function(request) {
+        var wrappedRequest = function(url) {
+            var deferred = new Deferred();
+
+            request(url, function(error, response, body) {
+                if (error) {
+                    deferred.reject(error);
+                } else {
+                    deferred.resolve(response, body);
+                }
+            });
+
+            return deferred;
+        };
+
+        return wrappedRequest;
+    }(require("request"))),
     MongoDBManagment = (function(mongo) {
         function Server(uri) {
             this.uri = uri;
@@ -35,6 +112,7 @@ var express = require('express'),
 
         Server.prototype.with = function() {
             var deferred = new Deferred(),
+                // TODO: Use configurabe mongodb:// uri
                 mongoClient = new mongo.MongoClient(new mongo.Server("localhost", 27017));
 
             mongoClient.open(function(error, mongoClient) {
@@ -128,9 +206,7 @@ var express = require('express'),
         Collection.prototype.get = function(_id) {
             var deferred = new Deferred();
 
-            this.findOne({
-                _id: _id
-            })
+            this.findOne(toObjectID(_id))
                 .fail(deferred.reject)
                 .done(deferred.resolve);
 
@@ -164,7 +240,7 @@ var express = require('express'),
                 .fail(deferred.reject)
                 .done(function(collection) {
                     collection.remove({
-                        _id: _id
+                        _id: toObjectID(_id)
                     }, {
                         safe: true
                     }, function(error, result) {
@@ -205,9 +281,7 @@ var express = require('express'),
             this.with()
                 .fail(deferred.reject)
                 .done(function(collection) {
-                    collection.findOne({
-                        _id: object._id
-                    }, function(error, result) {
+                    collection.findOne(object._id, function(error, result) {
                         if (error) {
                             deferred.reject(error);
                         }
@@ -215,7 +289,7 @@ var express = require('express'),
                         if (!result) {
                             this.insert(object)
                                 .fail(deferred.reject)
-                                .done(deferred.resolve);
+                                .done(callWithFirstInArray(deferred.resolve));
                         } else {
                             deferred.resolve(result);
                         }
@@ -233,8 +307,9 @@ var express = require('express'),
     }(require('mongodb'))),
     DB = {
         Users: (function() {
-            // TODO: class inheritance/aliasing
+            // TODO: class inheritance/aliasing, prototype chain stuffs
             var Users = new MongoDBManagment.Server(mongoUri).getDatabase(mongoDbName).getCollection("users");
+
             Users.getOrCreate = function(username) {
                 var deferred = new Deferred(),
                     userToFind = {
@@ -249,46 +324,107 @@ var express = require('express'),
                         } else {
                             this.insert(userToFind)
                                 .fail(deferred.reject)
-                                .done(function(user) {
-                                    deferred.resolve(user);
-                                });
+                                .done(callWithFirstInArray(deferred.resolve));
                         }
-                    });
+                    }.bind(this));
 
                 return deferred;
-            }
+            }.bind(Users);
 
             return Users;
         }()),
         HttpCache: (function() {
-            // TODO: class inheritance/aliasing
+            // TODO: class inheritance/aliasing, prototype chain stuffs
             var HttpCache = new MongoDBManagment.Server(mongoUri).getDatabase(mongoDbName).getCollection("http-cache");
+
+            HttpCache.getLatestOne = function(url) {
+                var deferred = new Deferred();
+
+                this.findOne({
+                    url: url
+                }, undefined, {
+                    sort: [
+                        ["retrievedAt", "desc"]
+                    ]
+                })
+                    .fail(deferred.reject)
+                    .done(deferred.resolve);
+
+                return deferred;
+            }.bind(HttpCache);
+
+            HttpCache.requestAndCache = function(url, acceptNotOnlyHttpStatus200) {
+                var deferred = new Deferred();
+
+                requestHTTPDeferred(url)
+                    .fail(deferred.reject)
+                    .done(function(response, body) {
+                        var toCache;
+
+                        acceptNotOnlyHttpStatus200 = acceptNotOnlyHttpStatus200 === true;
+
+                        if (!acceptNotOnlyHttpStatus200 && response.statusCode !== 200) {
+                            deferred.reject(response.statusCode, response);
+                        } else {
+                            toCache = {
+                                url: url,
+                                retrievedAt: new Date().valueOf(),
+                                response: deepCleanKeysFromDots(response.toJSON()),
+                                body: body.toString()
+                            };
+
+                            this.insert(toCache)
+                                .fail(deferred.reject)
+                                .done(callWithFirstInArray(deferred.resolve));
+                        }
+                    }.bind(this));
+
+                return deferred;
+            }.bind(HttpCache);
+
+            HttpCache.getLatestOneOrRequestAndCache = function(url) {
+                var deferred = new Deferred();
+
+                this.getLatestOne(url)
+                    .fail(deferred.reject)
+                    .done(function(cached) {
+                        if (!cached) {
+                            this.requestAndCache(url)
+                                .fail(deferred.reject)
+                                .done(deferred.resolve);
+                        } else {
+                            deferred.resolve(cached);
+                        }
+                    }.bind(this));
+
+                return deferred;
+            }.bind(HttpCache);
 
             return HttpCache;
         }()),
         Dumped: (function() {
-            // TODO: class inheritance/aliasing
+            // TODO: class inheritance/aliasing, prototype chain stuffs
             var Dumped = new MongoDBManagment.Server(mongoUri).getDatabase(mongoDbName).getCollection("dumped");
+
+            Dumped.getLatestOne = function(user_id) {
+                var deferred = new Deferred();
+
+                this.findOne({
+                    user_id: toObjectID(user_id)
+                }, undefined, {
+                    sort: [
+                        ["generatedAt", "desc"]
+                    ]
+                })
+                    .fail(deferred.reject)
+                    .done(deferred.resolve);
+
+                return deferred;
+            }.bind(Dumped);
 
             return Dumped;
         }())
-    },
-    requestHTTPDeferred = (function(requestHTTP) {
-        var request = function(url) {
-            var deferred = new Deferred();
-            requestHTTP(url, function(error, responseHTTP, bodyHtml) {
-                if (error) {
-                    deferred.reject(error);
-                } else {
-                    deferred.resolve(responseHTTP, bodyHtml);
-                }
-            });
-
-            return deferred;
-        };
-
-        return request;
-    }(require("request")));
+    };
 
 app.use(express.logger());
 
@@ -390,29 +526,6 @@ app.use(express.logger());
 
 }(JoelPurra, "claimIdDump"));
 
-var getClaimIdUrl = function(username) {
-    // This function is modified client side code, and should be rewritten to more of a server side format.
-    var claimIdBaseUrl = "http://claimid.com/",
-        claimIdUrl = claimIdBaseUrl + username,
-
-    return claimIdUrl;
-};
-
-var getClaimIdCacheUrl = function(username) {
-    // This function is modified client side code, and should be rewritten to more of a server side format.
-    var googleCacheBaseUrl = "http://webcache.googleusercontent.com/search?q=cache:",
-
-        encodeUrl = function(url) {
-            return encodeURI(url);
-        },
-
-        claimIdUrl = getClaimIdUrl(username),
-
-        url = googleCacheBaseUrl + encodeUrl(claimIdUrl);
-
-    return url;
-};
-
 app.get("/dump/", function(request, response, next) {
     function checkAndClean(str, disallowedRx, allowedRx) {
         if (disallowedRx.test(str) || !allowedRx.test(str)) {
@@ -440,28 +553,60 @@ app.get("/dump/", function(request, response, next) {
     DB.Users.getOrCreate(username)
         .fail(handleError)
         .done(function(user) {
-            DB.HttpCache.findOne({
-                cachedUrl: getClaimIdUrl(username)
-            }, {
-                sort: [
-                    ["cachedAt", "desc"]
-                ]
+            // TODO DEBUG: currently forcing requests
+            DB.HttpCache.getLatestOneOrRequestAndCache(url)
+            //DB.HttpCache.requestAndCache(url)
+            .fail(function(error, responseHttp) {
+                if (typeof error === "number" && error >= 100 && error <= 999) {
+                    response.send(error);
+                } else {
+                    handleError(error);
+                }
             })
-                .fail(handleError)
-                .done(function() {
-                    requestHTTPDeferred(url)
+                .done(function(cachedRequest) {
+                    DB.Dumped.getLatestOne(user._id)
                         .fail(handleError)
-                        .done(function() {
-                            var $ = cheerio.load(bodyHtml),
-                                dumped = JoelPurra.claimIdDump.dump($),
-                                meta = {
-                                    username: username,
-                                    generatedAt: new Date().valueOf(),
-                                    cacheUrl: url
+                        .done(function(cachedDump) {
+                            function getResult(user, cachedRequest, generatedAt, dumped) {
+                                var meta = {
+                                    username: user.username,
+                                    generatedAt: generatedAt,
+                                    cacheUrl: cachedRequest.url
                                 },
-                                result = extend({}, meta, dumped);
+                                    result = extend({}, meta, dumped);
 
-                            response.json(result);
+                                return result;
+                            }
+
+                            function send(result) {
+                                response.json(result);
+                            }
+
+                            function handleCachedDump(fromCache) {
+                                var result = fromCache.data;
+
+                                send(result);
+                            }
+
+                            if (!cachedDump) {
+                                var $ = cheerio.load(cachedRequest.body),
+                                    dumped = JoelPurra.claimIdDump.dump($),
+                                    generatedAt = new Date().valueOf(),
+                                    result = getResult(user, cachedRequest, generatedAt, dumped),
+                                    toCache = {
+                                        user_id: user._id,
+                                        httpCache_id: cachedRequest._id,
+                                        generatedAt: generatedAt,
+                                        version: dumpedDataVersion,
+                                        data: result
+                                    };
+
+                                DB.Dumped.insert(toCache)
+                                    .fail(handleError)
+                                    .done(callWithFirstInArray(handleCachedDump));
+                            } else {
+                                handleCachedDump(cachedDump);
+                            }
                         });
                 });
         });
