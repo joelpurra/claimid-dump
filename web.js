@@ -6,53 +6,15 @@
 var express = require('express'),
     cheerio = require("cheerio"),
     extend = require("extend"),
-    Deferred = require('Deferred'),
+    callWithFirstInArray = require("./callWithFirstInArray.js"),
     app = express(),
     JoelPurra = JoelPurra || {},
     port = process.env.PORT || 5000,
-    mongoUri = process.env.MONGOLAB_URI || 'mongodb://localhost/',
+    // The database name has to be in the URI - refactor to use that instead of a separate variable
+    mongoUri = process.env.MONGOLAB_URI || 'mongodb://localhost/claimid-dump',
     mongoDbName = "claimid-dump",
     dumpedDataVersion = 0,
-    toObjectID = (function(ObjectID) {
-        function toObjectID(id) {
-            if (!(id instanceof ObjectID)) {
-                return new ObjectID(id);
-            }
-
-            return id;
-        }
-
-        return toObjectID;
-    }(require('mongodb').ObjectID)),
-    deepCleanKeysFromDots = function(obj) {
-        function isObject(obj) {
-            var result = (typeof obj === 'object' || typeof obj === 'function') && (obj !== null);
-
-            return result;
-        }
-
-        if (isObject(obj)) {
-            Object.keys(obj).forEach(function(key) {
-                var clean = key.replace(/\./g, "___dot___");
-
-                obj[clean] = deepCleanKeysFromDots(obj[key]);
-
-                if (clean !== key) {
-                    delete obj[key];
-                }
-            });
-        }
-
-        return obj;
-    },
-    callWithFirstInArray = function(fn, context) {
-        context = context || null;
-        var wrapped = function(array) {
-            return fn.call(context, array[0]);
-        }
-
-        return wrapped;
-    },
+    // TODO: break out lists of cache site to a module
     getClaimIdUrl = function(username) {
         // This function is modified client side code, and should be rewritten to more of a server side format.
         var claimIdBaseUrl = "http://claimid.com/",
@@ -74,390 +36,10 @@ var express = require('express'),
 
         return url;
     },
-    requestHTTPDeferred = (function(request) {
-        var wrappedRequest = function(url) {
-            var deferred = new Deferred();
-
-            request(url, function(error, response, body) {
-                if (error) {
-                    deferred.reject(error);
-                } else {
-                    deferred.resolve(response, body);
-                }
-            });
-
-            return deferred;
-        };
-
-        return wrappedRequest;
-    }(require("request"))),
-    MongoDBManagment = (function(mongo) {
-        function Server(uri) {
-            this.uri = uri;
-
-            return this;
-        }
-
-        function Database(server, name) {
-            this.server = server;
-            this.name = name;
-
-            return this;
-        }
-
-        function Collection(database, name) {
-            this.database = database;
-            this.name = name;
-
-            return this;
-        }
-
-        Server.ConnectionPools = [];
-
-        Server.DEFAULTPORT = 27017;
-
-        Server.parseMongoUri = function(uri) {
-            // HACK: I don't expect this to work well in the future
-            var parts = uri.replace("mongodb://", "").split("/")[0].split(":"),
-
-                result = {
-                    host: parts[0],
-                    port: parts[1] || Server.DEFAULTPORT
-                };
-
-            return result;
-        };
-
-        Server.prototype.with = function() {
-            var deferred = new Deferred(),
-                cachedMongoClient = Server.ConnectionPools[this.uri],
-                uriParts,
-                mongoClient;
-
-            if (cachedMongoClient) {
-                deferred.resolve(cachedMongoClient);
-            } else {
-                // TODO: Use configurabe mongodb:// uri straight using mongo.MongoClient.Connect(uri)?
-                uriParts = Server.parseMongoUri(this.uri);
-                mongoClient = new mongo.MongoClient(new mongo.Server(uriParts.host, uriParts.port, {
-                    auto_reconnect: true
-                }));
-
-                mongoClient.open(function(error, mongoClient) {
-                    if (error) {
-                        deferred.reject(error);
-                    }
-
-                    Server.ConnectionPools[this.uri] = mongoClient;
-
-                    // TODO: mongoClient.close(); ever?
-                    deferred.resolve(mongoClient);
-                }.bind(this));
-            }
-
-            return deferred.promise();
-        };
-
-        Server.prototype.getDatabase = function(name) {
-            return new Database(this, name);
-        };
-
-        Database.prototype.with = function() {
-            var deferred = new Deferred();
-
-            this.server.with()
-                .fail(deferred.reject)
-                .done(function(mongoClient) {
-                    var database = mongoClient.db(this.name, null, {
-                        native_parser: true
-                    });
-
-                    deferred.resolve(database);
-                }.bind(this));
-
-            return deferred.promise();
-        };
-
-        Database.prototype.getCollection = function(name) {
-            return new Collection(this, name);
-        };
-
-        Collection.prototype.with = function() {
-            var deferred = new Deferred();
-
-            this.database.with()
-                .fail(deferred.reject)
-                .done(function(database) {
-                    database.collection(this.name, function(error, collection) {
-                        if (error) {
-                            deferred.reject(error);
-                        }
-
-                        deferred.resolve(collection);
-                    });
-                }.bind(this));
-
-            return deferred.promise();
-        };
-
-        Collection.prototype.find = function(query, fields, options) {
-            var deferred = new Deferred();
-
-            this.with()
-                .fail(deferred.reject)
-                .done(function(collection) {
-                    collection.findOne(query, fields, options, function(error, result) {
-                        if (error) {
-                            deferred.reject(error);
-                        }
-
-                        deferred.resolve(result);
-                    });
-                }.bind(this));
-
-            return deferred.promise();
-        };
-
-        Collection.prototype.findOne = function(query, fields, options) {
-            var deferred = new Deferred();
-
-            this.with()
-                .fail(deferred.reject)
-                .done(function(collection) {
-                    collection.findOne(query, fields, options, function(error, result) {
-                        if (error) {
-                            deferred.reject(error);
-                        }
-
-                        deferred.resolve(result);
-                    });
-                }.bind(this));
-
-            return deferred.promise();
-        };
-
-        Collection.prototype.get = function(_id) {
-            var deferred = new Deferred();
-
-            this.findOne(toObjectID(_id))
-                .fail(deferred.reject)
-                .done(deferred.resolve);
-
-            return deferred.promise();
-        };
-
-        Collection.prototype.insert = function(object) {
-            var deferred = new Deferred();
-
-            this.with()
-                .fail(deferred.reject)
-                .done(function(collection) {
-                    collection.insert(object, {
-                        safe: true
-                    }, function(error, result) {
-                        if (error) {
-                            deferred.reject(error);
-                        }
-
-                        deferred.resolve(result);
-                    });
-                }.bind(this));
-
-            return deferred.promise();
-        };
-
-        Collection.prototype.remove = function(_id) {
-            var deferred = new Deferred();
-
-            this.with()
-                .fail(deferred.reject)
-                .done(function(collection) {
-                    collection.remove({
-                        _id: toObjectID(_id)
-                    }, {
-                        safe: true
-                    }, function(error, result) {
-                        if (error) {
-                            deferred.reject(error);
-                        }
-
-                        deferred.resolve(result);
-                    });
-                }.bind(this));
-
-            return deferred.promise();
-        };
-
-        Collection.prototype.save = function(object) {
-            var deferred = new Deferred();
-
-            this.with()
-                .fail(deferred.reject)
-                .done(function(collection) {
-                    collection.save(object, {
-                        safe: true
-                    }, function(error, result) {
-                        if (error) {
-                            deferred.reject(error);
-                        }
-
-                        deferred.resolve(result);
-                    });
-                }.bind(this));
-
-            return deferred.promise();
-        };
-
-        Collection.prototype.getOrInsert = function(object) {
-            var deferred = new Deferred();
-
-            this.with()
-                .fail(deferred.reject)
-                .done(function(collection) {
-                    collection.findOne(object._id, function(error, result) {
-                        if (error) {
-                            deferred.reject(error);
-                        }
-
-                        if (!result) {
-                            this.insert(object)
-                                .fail(deferred.reject)
-                                .done(callWithFirstInArray(deferred.resolve));
-                        } else {
-                            deferred.resolve(result);
-                        }
-                    });
-                }.bind(this));
-
-            return deferred.promise();
-        };
-
-        var api = {
-            Server: Server
-        };
-
-        return api;
-    }(require('mongodb'))),
-    DB = {
-        Users: (function() {
-            // TODO: class inheritance/aliasing, prototype chain stuffs
-            var Users = new MongoDBManagment.Server(mongoUri).getDatabase(mongoDbName).getCollection("users");
-
-            Users.getOrCreate = function(username) {
-                var deferred = new Deferred(),
-                    userToFind = {
-                        username: username
-                    };
-
-                this.findOne(userToFind)
-                    .fail(deferred.reject)
-                    .done(function(user) {
-                        if (user) {
-                            deferred.resolve(user);
-                        } else {
-                            this.insert(userToFind)
-                                .fail(deferred.reject)
-                                .done(callWithFirstInArray(deferred.resolve));
-                        }
-                    }.bind(this));
-
-                return deferred;
-            }.bind(Users);
-
-            return Users;
-        }()),
-        HttpCache: (function() {
-            // TODO: class inheritance/aliasing, prototype chain stuffs
-            var HttpCache = new MongoDBManagment.Server(mongoUri).getDatabase(mongoDbName).getCollection("http-cache");
-
-            HttpCache.getLatestOne = function(url) {
-                var deferred = new Deferred();
-
-                this.findOne({
-                    url: url
-                }, null, {
-                    sort: [
-                        ["retrievedAt", "desc"]
-                    ]
-                })
-                    .fail(deferred.reject)
-                    .done(deferred.resolve);
-
-                return deferred;
-            }.bind(HttpCache);
-
-            HttpCache.requestAndCache = function(url, acceptNotOnlyHttpStatus200) {
-                var deferred = new Deferred();
-
-                requestHTTPDeferred(url)
-                    .fail(deferred.reject)
-                    .done(function(response, body) {
-                        var toCache;
-
-                        acceptNotOnlyHttpStatus200 = acceptNotOnlyHttpStatus200 === true;
-
-                        if (!acceptNotOnlyHttpStatus200 && response.statusCode !== 200) {
-                            deferred.reject(response.statusCode, response);
-                        } else {
-                            toCache = {
-                                url: url,
-                                retrievedAt: new Date().valueOf(),
-                                response: deepCleanKeysFromDots(response.toJSON()),
-                                body: body.toString()
-                            };
-
-                            this.insert(toCache)
-                                .fail(deferred.reject)
-                                .done(callWithFirstInArray(deferred.resolve));
-                        }
-                    }.bind(this));
-
-                return deferred;
-            }.bind(HttpCache);
-
-            HttpCache.getLatestOneOrRequestAndCache = function(url, acceptNotOnlyHttpStatus200) {
-                var deferred = new Deferred();
-
-                this.getLatestOne(url)
-                    .fail(deferred.reject)
-                    .done(function(cached) {
-                        if (!cached) {
-                            this.requestAndCache(url, acceptNotOnlyHttpStatus200)
-                                .fail(deferred.reject)
-                                .done(deferred.resolve);
-                        } else {
-                            deferred.resolve(cached);
-                        }
-                    }.bind(this));
-
-                return deferred;
-            }.bind(HttpCache);
-
-            return HttpCache;
-        }()),
-        Dumped: (function() {
-            // TODO: class inheritance/aliasing, prototype chain stuffs
-            var Dumped = new MongoDBManagment.Server(mongoUri).getDatabase(mongoDbName).getCollection("dumped");
-
-            Dumped.getLatestOne = function(user_id) {
-                var deferred = new Deferred();
-
-                this.findOne({
-                    user_id: toObjectID(user_id)
-                }, null, {
-                    sort: [
-                        ["generatedAt", "desc"]
-                    ]
-                })
-                    .fail(deferred.reject)
-                    .done(deferred.resolve);
-
-                return deferred;
-            }.bind(Dumped);
-
-            return Dumped;
-        }())
-    };
+    database = require("./database.js")({
+        uri: mongoUri,
+        databaseName: mongoDbName
+    });
 
 app.use(express.logger());
 
@@ -598,14 +180,14 @@ app.get("/dump/", function(request, response, next) {
         return;
     }
 
-    DB.Users.getOrCreate(username)
+    database.Users.getOrCreate(username)
         .fail(handleError)
         .done(function(user) {
-            DB.HttpCache.getLatestOneOrRequestAndCache(url, true)
-            .fail(sendForwardedHttpStatusCode)
+            database.HttpCache.getLatestOneOrRequestAndCache(url, true)
+                .fail(sendForwardedHttpStatusCode)
                 .fail(handleError)
                 .done(function(cachedRequest) {
-                    DB.Dumped.getLatestOne(user._id)
+                    database.Dumped.getLatestOne(user._id)
                         .fail(handleError)
                         .done(function(cachedDump) {
                             function getResult(user, cachedRequest, generatedAt, dumped) {
@@ -648,7 +230,7 @@ app.get("/dump/", function(request, response, next) {
                                         data: result
                                     };
 
-                                DB.Dumped.insert(toCache)
+                                database.Dumped.insert(toCache)
                                     .fail(handleError)
                                     .done(callWithFirstInArray(handleCachedDump));
                             } else {
