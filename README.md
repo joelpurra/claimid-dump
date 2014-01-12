@@ -20,3 +20,7 @@ Currently, [Google's Web Cache](https://support.google.com/webmasters/answer/105
 Copyright (c) 2013, [Joel Purra](http://joelpurra.com/) All rights reserved.
 
 When using claimid-dump, comply to the [GNU Affero General Public License 3.0 (AGPL-3.0)](https://en.wikipedia.org/wiki/Affero_General_Public_License). Please see the LICENSE file for details.
+
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/joelpurra/claimid-dump/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
+
