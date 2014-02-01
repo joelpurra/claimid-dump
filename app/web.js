@@ -4,6 +4,7 @@
 /*global require: true, process: true, __dirname: true, console: true, JoelPurra: true */
 
 var express = require('express'),
+    path = require("path"),
     cheerio = require("cheerio"),
     extend = require("extend"),
     callWithFirstInArray = require("../lib/callWithFirstInArray.js"),
@@ -14,6 +15,14 @@ var express = require('express'),
     mongoUri = process.env.MONGOLAB_URI || 'mongodb://localhost/claimid-dump',
     mongoDbName = "claimid-dump",
     dumpedDataVersion = 0,
+    resolvePath = function() {
+        var args = [].slice.call(arguments),
+            parts = [__dirname].concat(args);
+
+        return path.resolve.apply(path, parts);
+    },
+    // Path to static resources like index.html, css etcetera
+    siteRootPath = resolvePath('..', 'public'),
     // TODO: break out lists of cache site to a module
     getClaimIdUrl = function(username) {
         // This function is modified client side code, and should be rewritten to more of a server side format.
@@ -241,8 +250,9 @@ app.get("/dump/", function(request, response, next) {
         });
 });
 
-app.use(express.static(__dirname + '/../public'));
+app.use(express.static(siteRootPath));
 
 app.listen(port, function() {
-    console.log("Listening on " + port);
+    console.log("Listening on port", port);
+    console.log("Serving site root from folder", siteRootPath);
 });
