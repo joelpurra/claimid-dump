@@ -62,12 +62,12 @@ var Deferred = require('Deferred'),
                 HttpCache.requestAndCache = function(url, acceptNotOnlyHttpStatus200) {
                     var deferred = new Deferred();
 
+                    acceptNotOnlyHttpStatus200 = acceptNotOnlyHttpStatus200 === true;
+
                     requestHTTPDeferred(url)
                         .fail(deferred.reject)
                         .done(function(response, body) {
                             var toCache;
-
-                            acceptNotOnlyHttpStatus200 = acceptNotOnlyHttpStatus200 === true;
 
                             if (!acceptNotOnlyHttpStatus200 && response.statusCode !== 200) {
                                 deferred.reject(response.statusCode, response);
