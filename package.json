@@ -1,5 +1,6 @@
 {
     "name": "claimid-dump",
+    "private": true,
     "version": "0.0.0",
     "description": "Dump data and links extracted from the shut down claimid.com service, using other sources.",
     "main": "app/web.js",
