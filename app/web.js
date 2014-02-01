@@ -6,7 +6,7 @@
 var express = require('express'),
     cheerio = require("cheerio"),
     extend = require("extend"),
-    callWithFirstInArray = require("./callWithFirstInArray.js"),
+    callWithFirstInArray = require("../lib/callWithFirstInArray.js"),
     app = express(),
     JoelPurra = JoelPurra || {},
     port = process.env.PORT || 5000,
@@ -36,7 +36,7 @@ var express = require('express'),
 
         return url;
     },
-    database = require("./database.js")({
+    database = require("./data/data-layer-wrapper.js")({
         uri: mongoUri,
         databaseName: mongoDbName
     });
@@ -241,7 +241,7 @@ app.get("/dump/", function(request, response, next) {
         });
 });
 
-app.use(express.static(__dirname + '/public'));
+app.use(express.static(__dirname + '/../public'));
 
 app.listen(port, function() {
     console.log("Listening on " + port);

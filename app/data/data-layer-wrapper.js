@@ -4,11 +4,11 @@
 /*global require: true, module: true */
 
 var Deferred = require('Deferred'),
-    MongoDBManagment = require("./mongodb-deferred.js"),
-    callWithFirstInArray = require("./callWithFirstInArray.js"),
-    requestHTTPDeferred = require("./requestHTTPDeferred.js"),
-    deepCleanKeysFromDots = require("./deepCleanKeysFromDots.js"),
-    toObjectID = require("./toObjectID.js"),
+    MongoDBManagment = require("../../lib/mongodb-deferred.js"),
+    callWithFirstInArray = require("../../lib/callWithFirstInArray.js"),
+    requestHTTPDeferred = require("../../lib/requestHTTPDeferred.js"),
+    deepCleanKeysFromDots = require("../../lib/deepCleanKeysFromDots.js"),
+    toObjectID = require("../../lib/toObjectID.js"),
 
     generate = function(options) {
         var Users = (function() {
