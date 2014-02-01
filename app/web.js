@@ -1,15 +1,15 @@
 "use strict";
 
 /*jslint white: true, todo: true */
-/*global require: true, process: true, __dirname: true, console: true, JoelPurra: true */
+/*global require: true, process: true, __dirname: true, console: true */
 
 var express = require('express'),
     path = require("path"),
     cheerio = require("cheerio"),
     extend = require("extend"),
     callWithFirstInArray = require("../lib/callWithFirstInArray.js"),
+    htmlDataExtractor = require("../lib/html-data-extraction/google-web-cache.js"),
     app = express(),
-    JoelPurra = JoelPurra || {},
     port = process.env.PORT || 5000,
     // The database name has to be in the URI - refactor to use that instead of a separate variable
     mongoUri = process.env.MONGOLAB_URI || 'mongodb://localhost/claimid-dump',
@@ -51,104 +51,6 @@ var express = require('express'),
     });
 
 app.use(express.logger());
-
-(function(namespace, pluginName) {
-    // This function quite obviously is a modified client side plugin, and should be rewritten to more of a server side format.
-    var $,
-
-        dateFormatRx = /\d{4}-\d{2}-\d{2}/,
-
-        internal = {
-            extractLink: function() {
-                var $this = $(this),
-                    $link = $this.find(".taggedlink"),
-                    who = $this.find(".info_link").text().split("&nbsp;")[0].split("|").map(function(str) {
-                        return str.trim().split("\n")[0].trim();
-                    }),
-                    result = {
-                        url: $link.attr("href"),
-                        title: $link.text().trim(),
-                        tags: $this.find("[rel~=tag]").map(function() {
-                            return $(this).text();
-                        }),
-                        description: $this.find(".public_description").first().text(),
-                        added: $this.find(".date_added").text().match(dateFormatRx)[0],
-                        date: $this.find(".date").text(),
-                        about: who[0],
-                        by: who[1],
-                        color: $this.find("a").first().find("img").attr("alt").replace("Star_", "")
-                    };
-
-                return result;
-            },
-
-            extractGroup: function() {
-                var $this = $(this),
-                    titleHtml = $this.find(".group_header").first().html(),
-                    result = {
-                        title: titleHtml.substring(0, titleHtml.indexOf("<")).trim(),
-                        description: $this.find(".group_description .text").text(),
-                        links: $this.find(".xfolkentry").map(internal.extractLink)
-                    };
-
-                return result;
-            },
-
-            getCachedDate: function() {
-                try {
-                    var div = $("div div").first();
-                    var text = div.text();
-                    var gmtSplit = text.split("GMT");
-                    console.log("gmtSplit", gmtSplit)
-                    var appearSplit = gmtSplit[0].trim().split("appeared on");
-                    var dateTimeUtcValue = new Date(appearSplit[1].trim() + " GMT").valueOf();
-
-                    return dateTimeUtcValue;
-                } catch (e) {
-                    console.error("Could not parse the cache date.")
-                }
-
-                return undefined;
-            },
-
-            getCachedUrl: function() {
-                try {
-                    var url = $("div div").first().find("a").first().attr("href");
-
-                    return url;
-                } catch (e) {
-                    console.error("Could not parse the cache date.")
-                }
-
-                return undefined;
-            },
-
-            dump: function($context) {
-                var groups = $(".display_group", $context),
-                    result = {
-                        cachedUrl: internal.getCachedUrl(),
-                        cachedAt: internal.getCachedDate(),
-                        groups: groups.length === 0 ? undefined : groups.map(internal.extractGroup)
-                    };
-
-                return result;
-            }
-        },
-
-        plugin = {
-            dump: function(cheerio, $context) {
-                $ = cheerio;
-                return internal.dump($context);
-            }
-        },
-
-        init = function() {
-            namespace[pluginName] = plugin;
-        };
-
-    init();
-
-}(JoelPurra, "claimIdDump"));
 
 app.get("/dump/", function(request, response, next) {
     function checkAndClean(str, disallowedRx, allowedRx) {
@@ -212,7 +114,7 @@ app.get("/dump/", function(request, response, next) {
 
                             function send(result) {
                                 response.json(result);
-                                response.end();
+                            response.end();
                             }
 
                             function handleCachedDump(fromCache) {
@@ -228,7 +130,7 @@ app.get("/dump/", function(request, response, next) {
                                 }
 
                                 var $ = cheerio.load(cachedRequest.body),
-                                    dumped = JoelPurra.claimIdDump.dump($),
+                                    dumped = htmlDataExtractor($),
                                     generatedAt = new Date().valueOf(),
                                     result = getResult(user, cachedRequest, generatedAt, dumped),
                                     toCache = {
