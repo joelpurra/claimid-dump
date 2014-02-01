@@ -3,26 +3,38 @@
 /*jslint white: true, todo: true */
 /*global require: true, process: true, __dirname: true, console: true */
 
-var express = require('express'),
+var configuration = require("configvention"),
+    port = configuration.get("PORT"),
+    mongoUri = configuration.get("MONGOLAB_URI"),
+    siteRootRelativePath = configuration.get("site-root"),
+
+    dumpedDataVersion = 0,
+    relativePathToRootFromThisFile = "..",
+
+    express = require('express'),
     path = require("path"),
     cheerio = require("cheerio"),
     extend = require("extend"),
+
     callWithFirstInArray = require("../lib/callWithFirstInArray.js"),
     htmlDataExtractor = require("../lib/html-data-extraction/google-web-cache.js"),
-    app = express(),
-    port = process.env.PORT || 5000,
-    // The database name has to be in the URI - refactor to use that instead of a separate variable
-    mongoUri = process.env.MONGOLAB_URI || 'mongodb://localhost/claimid-dump',
-    mongoDbName = "claimid-dump",
-    dumpedDataVersion = 0,
+
     resolvePath = function() {
         var args = [].slice.call(arguments),
             parts = [__dirname].concat(args);
 
         return path.resolve.apply(path, parts);
     },
+    resolvePathFromProjectRoot = function() {
+        var args = [].slice.call(arguments),
+            parts = [relativePathToRootFromThisFile].concat(args);
+
+        return resolvePath.apply(null, parts);
+    },
+
     // Path to static resources like index.html, css etcetera
-    siteRootPath = resolvePath('..', 'public'),
+    siteRootPath = resolvePathFromProjectRoot.apply(null, siteRootRelativePath.split("/")),
+
     // TODO: break out lists of cache site to a module
     getClaimIdUrl = function(username) {
         // This function is modified client side code, and should be rewritten to more of a server side format.
@@ -31,6 +43,7 @@ var express = require('express'),
 
         return claimIdUrl;
     },
+
     getClaimIdCacheUrl = function(username) {
         // This function is modified client side code, and should be rewritten to more of a server side format.
         var googleCacheBaseUrl = "http://webcache.googleusercontent.com/search?q=cache:",
@@ -45,10 +58,12 @@ var express = require('express'),
 
         return url;
     },
+
     database = require("./data/data-layer-wrapper.js")({
-        uri: mongoUri,
-        databaseName: mongoDbName
-    });
+        uri: mongoUri
+    }),
+
+    app = express();
 
 app.use(express.logger());
 
@@ -114,7 +129,7 @@ app.get("/dump/", function(request, response, next) {
 
                             function send(result) {
                                 response.json(result);
-                            response.end();
+                                response.end();
                             }
 
                             function handleCachedDump(fromCache) {

@@ -10,8 +10,9 @@ var Deferred = require('Deferred'),
     deepCleanKeysFromDots = require("../../lib/deepCleanKeysFromDots.js"),
     toObjectID = require("../../lib/toObjectID.js"),
 
+    // TODO: simplify this code, to avoid generating functions?
     generate = function(options) {
-        var Users = (function() {
+        var generateUsers = function() {
             // TODO: class inheritance/aliasing, prototype chain stuffs
             var Users = new MongoDBManagment.Server(options.uri).getDatabase(options.databaseName).getCollection("users");
 
@@ -37,9 +38,9 @@ var Deferred = require('Deferred'),
             }.bind(Users);
 
             return Users;
-        }()),
+        },
 
-            HttpCache = (function() {
+            generateHttpCache = function() {
                 // TODO: class inheritance/aliasing, prototype chain stuffs
                 var HttpCache = new MongoDBManagment.Server(options.uri).getDatabase(options.databaseName).getCollection("http-cache");
 
@@ -107,9 +108,9 @@ var Deferred = require('Deferred'),
                 }.bind(HttpCache);
 
                 return HttpCache;
-            }()),
+            },
 
-            Dumped = (function() {
+            generateDumped = function() {
                 // TODO: class inheritance/aliasing, prototype chain stuffs
                 var Dumped = new MongoDBManagment.Server(options.uri).getDatabase(options.databaseName).getCollection("dumped");
 
@@ -130,13 +131,38 @@ var Deferred = require('Deferred'),
                 }.bind(Dumped);
 
                 return Dumped;
-            }()),
+            },
 
-            api = {
-                Users: Users,
-                HttpCache: HttpCache,
-                Dumped: Dumped
-            };
+            extractDatabaseName = function(uri) {
+                // TODO: replace with some uri library
+                var uriParts = uri.split("/"),
+                    dbName = uriParts[uriParts.length - 1].split("?")[0];
+
+                return dbName;
+            },
+
+            prepareOptions = function() {
+                options.databaseName = extractDatabaseName(options.uri);
+            },
+
+            generateApi = function() {
+                var generatedApi = {
+                    Users: generateUsers(),
+                    HttpCache: generateHttpCache(),
+                    Dumped: generateDumped()
+                };
+
+                return generatedApi;
+            },
+
+            init = function() {
+                prepareOptions();
+                api = generateApi();
+            },
+
+            api;
+
+        init();
 
         return api;
     },
