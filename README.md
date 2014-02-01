@@ -10,6 +10,9 @@ Currently, [Google's Web Cache](https://support.google.com/webmasters/answer/105
 
 &#9744; Also extract data from the [Internet Archive Wayback Machine](http://web.archive.org/web/), see for example the username [joelpurra](http://web.archive.org/web/http://claimid.com/joelpurra).  
 &#9744; Output copies of the original claimid user pages, based on json data.  
+&#9744; Don't lowercase usernames, in case case matters in the URL.  
+&#9744; Fix up project file/folder structure.  
+&#9744; Break out mongodb-deferred to a separate project.  
 &#9745; Cache retrieved responses.  
 &#9745; Save parsed json results.  
 
