@@ -46,7 +46,7 @@ var configuration = require("configvention"),
 
     getClaimIdCacheUrl = function(username) {
         // This function is modified client side code, and should be rewritten to more of a server side format.
-        var googleCacheBaseUrl = "http://webcache.googleusercontent.com/search?q=cache:",
+        var internetArchiveBaseUrl = "http://web.archive.org/web/20140101000000/", // Serves newest archived version of page
 
             encodeUrl = function(url) {
                 return encodeURI(url);
@@ -54,7 +54,7 @@ var configuration = require("configvention"),
 
             claimIdUrl = getClaimIdUrl(username),
 
-            url = googleCacheBaseUrl + encodeUrl(claimIdUrl);
+            url = internetArchiveBaseUrl + encodeUrl(claimIdUrl);
 
         return url;
     },
