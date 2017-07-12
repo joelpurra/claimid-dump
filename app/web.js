@@ -63,9 +63,11 @@ var configuration = require("configvention"),
         uri: mongoUri
     }),
 
+    logger = require("express-bunyan-logger"),
+
     app = express();
 
-app.use(express.logger());
+app.use(logger());
 
 app.get("/dump/", function(request, response, next) {
     function checkAndClean(str, disallowedRx, allowedRx) {
@@ -90,9 +92,9 @@ app.get("/dump/", function(request, response, next) {
         throw error;
     }
 
-    function sendForwardedHttpStatusCode(error, responseHttp) {
-        if (typeof error === "number" && error >= 100 && error <= 999) {
-            response.send(error);
+    function sendForwardedHttpStatusCode(forwardedError, forwardedResponse) {
+        if (typeof forwardedError === "number" && forwardedError >= 100 && forwardedError <= 999) {
+            response.sendStatus(forwardedError);
             response.end();
         }
     }
@@ -101,27 +103,30 @@ app.get("/dump/", function(request, response, next) {
         url = getClaimIdCacheUrl(username);
 
     if (!username) {
-        response.send(422);
+        response.sendStatus(422);
         response.end();
+
         return;
     }
 
     database.Users.getOrCreate(username)
-        .fail(handleError)
-        .done(function(user) {
+        .error(handleError)
+        .then(function(user) {
             database.HttpCache.getLatestOneOrRequestAndCache(url, true)
-                .fail(sendForwardedHttpStatusCode)
-                .fail(handleError)
-                .done(function(cachedRequest) {
+                // TODO: the method signature doesn't match?
+                // .error(sendForwardedHttpStatusCode)
+                .error(handleError)
+                .then(function(cachedRequest) {
                     database.Dumped.getLatestOne(user._id)
-                        .fail(handleError)
-                        .done(function(cachedDump) {
+                        .error(handleError)
+                        .then(function(cachedDump) {
                             function getResult(user, cachedRequest, generatedAt, dumped) {
                                 var meta = {
-                                    username: user.username,
-                                    generatedAt: generatedAt,
-                                    cacheUrl: cachedRequest.url
-                                },
+                                        username: user.username,
+                                        generatedAt: generatedAt,
+                                        cacheUrl: cachedRequest.url,
+                                    },
+                                    // TODO: replace with copyDeep call?
                                     result = extend({}, meta, dumped);
 
                                 return result;
@@ -153,12 +158,12 @@ app.get("/dump/", function(request, response, next) {
                                         httpCache_id: cachedRequest._id,
                                         generatedAt: generatedAt,
                                         version: dumpedDataVersion,
-                                        data: result
+                                        data: result,
                                     };
 
                                 database.Dumped.insert(toCache)
-                                    .fail(handleError)
-                                    .done(callWithFirstInArray(handleCachedDump));
+                                    .error(handleError)
+                                    .then(callWithFirstInArray(handleCachedDump));
                             } else {
                                 handleCachedDump(cachedDump);
                             }
