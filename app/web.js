@@ -46,7 +46,7 @@ var configuration = require("configvention"),
 
     getClaimIdCacheUrl = function(username) {
         // This function is modified client side code, and should be rewritten to more of a server side format.
-        var googleCacheBaseUrl = "http://webcache.googleusercontent.com/search?q=cache:",
+        var googleCacheBaseUrl = "https://webcache.googleusercontent.com/search?q=cache:",
 
             encodeUrl = function(url) {
                 return encodeURI(url);
