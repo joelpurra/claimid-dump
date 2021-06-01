@@ -2,6 +2,14 @@
 
 Dump data and links extracted from the [shut down claimid.com service](https://en.wikipedia.org/wiki/ClaimID), using other sources.
 
+
+
+> ## ⚠️ This project has been archived
+>
+> No future updates are planned. Feel free to continue using it, but expect no support.
+
+
+
 Currently, [Google's Web Cache](https://support.google.com/webmasters/answer/1050724?hl=en#cached) is supported, see for example the username [joelpurra](https://webcache.googleusercontent.com/search?q=cache:http://claimid.com/joelpurra).
 
 
